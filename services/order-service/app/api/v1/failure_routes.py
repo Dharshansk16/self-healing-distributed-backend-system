@@ -10,6 +10,10 @@ from app.failure.failure_simulation import (
 
 router = APIRouter()
 
+"""Failure Simulation Routes
+    -Endpoints for simulating various failure scenarios in the order service.
+"""
+
 @router.get("/simulate/crash")
 def simulate_crash():
     crash()

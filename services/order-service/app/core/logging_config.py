@@ -1,7 +1,7 @@
 import logging
 import sys
 
-
+#logging setup for order service
 def setup_logging():
     logging.basicConfig(
         level=logging.INFO,

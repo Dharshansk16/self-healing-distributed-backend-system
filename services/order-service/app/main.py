@@ -6,7 +6,11 @@ from app.core.logging_config import setup_logging
 from fastapi.responses import JSONResponse
 import logging
 
-
+"""
+Main Application
+    -Initializes the FastAPI application and configures it with the necessary routers 
+    and logging settings for order services app.
+"""
 setup_logging()
 
 app = FastAPI(title=settings.SERVICE_NAME, version = settings.SERVICE_VERSION)
