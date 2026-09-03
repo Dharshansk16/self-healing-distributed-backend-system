@@ -1,19 +1,14 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
+
 from app.models.order_models import OrderRequest, OrderResponse
 from app.services.order_service import create_order
 
-router= APIRouter()
-
-"""
-    API Routes
-    -Defines the main API endpoints for the order service
-    including health checks and order creation.
-"""
+router = APIRouter()
 
 @router.get("/health")
-def health_check():
-    return {"status": "Order Service is healthy"}
+def health_check() -> dict[str, str]:
+    return {"status": "healthy", "service": "order-service"}
 
-@router.post("/order")
-def create_new_orer(order_request: OrderRequest) -> OrderResponse:
-    return create_order(order_request)
+@router.post("/orders", response_model=OrderResponse, status_code=201)
+def create_new_order(order_request: OrderRequest, request: Request) -> OrderResponse:
+    return create_order(order_request, request.state.request_id)
