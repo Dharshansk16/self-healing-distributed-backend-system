@@ -54,6 +54,10 @@ self-healing-distributed-system/
 ├── Makefile                            # Build, test, and execution targets
 ├── run_local_cluster.py                # Single-command local launcher
 │
+├── docs/                               # Project documentation and specifications
+│   ├── BLUEPRINT.md                    # Master MAPE-K architectural specification & roadmap
+│   └── PROGRESS.md                     # Phase progress tracking and audit status
+│
 ├── target-cluster/                     # PLANE 1: Target Microservice Mesh
 │   ├── common/
 │   │   └── telemetry_and_chaos.py      # Shared middleware for Prometheus, telemetry snapshots, and chaos hooks

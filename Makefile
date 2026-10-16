@@ -57,5 +57,6 @@ docker-down:
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} +
 	find . -type f -name "*.pyc" -delete
-	rm -rf .pytest_cache
+	find . -type f -name ".DS_Store" -delete
+	rm -rf .pytest_cache .ruff_cache
 	rm -f .cluster_pids.json

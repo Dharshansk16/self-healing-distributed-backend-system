@@ -13,6 +13,7 @@ venv/
 
 # Testing & Cache
 .pytest_cache/
+.ruff_cache/
 .cluster_pids.json
 
 # Env files
