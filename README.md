@@ -102,15 +102,28 @@ self-healing-distributed-system/
 
 ## 5. Quick Start & Execution
 
-### Option A: Local Run (No Docker or Kubernetes required)
+### Option A: Local Run (via `uv` or standard Python)
+
+Install dependencies:
+```bash
+# Using uv (recommended, fast & reproducible)
+uv sync
+
+# Or using standard pip
+pip install -r requirements.txt
+```
 
 Start all 4 microservices locally:
 ```bash
-python3 run_local_cluster.py start
+# Using uv
+uv run python run_local_cluster.py start
+
+# Or using Makefile
+make run-local
 ```
 Check health and status:
 ```bash
-python3 run_local_cluster.py status
+uv run python run_local_cluster.py status
 ```
 Test checkout request:
 ```bash
@@ -120,7 +133,7 @@ curl -i -X POST http://localhost:8000/api/v1/checkout \
 ```
 Stop the local cluster:
 ```bash
-python3 run_local_cluster.py stop
+uv run python run_local_cluster.py stop
 ```
 
 ### Option B: Docker Compose
@@ -143,7 +156,9 @@ docker compose down
 
 Run the full pytest suite (18 unit, gray-failure, and live cascading tests):
 ```bash
-pytest -v tests/
-# or
+# Using uv
+uv run pytest -v tests/
+
+# Or using Makefile
 make test
 ```

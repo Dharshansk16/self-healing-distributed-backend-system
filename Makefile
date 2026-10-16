@@ -1,11 +1,11 @@
-PYTHON := python3
+UV := $(shell which uv 2>/dev/null)
 
 .PHONY: help install run-local stop-local status-local test docker-up docker-down clean
 
 help:
 	@echo "Available Makefile commands:"
-	@echo "  make install       Install consolidated Python dependencies"
-	@echo "  make run-local     Start 4 microservices locally in background"
+	@echo "  make install       Install dependencies (via uv sync, with pip fallback)"
+	@echo "  make run-local     Start 4 microservices locally in background (via uv run)"
 	@echo "  make stop-local    Stop all locally running microservices"
 	@echo "  make status-local  Check health of local microservices"
 	@echo "  make test          Run pytest suite on target microservices"
@@ -14,19 +14,39 @@ help:
 	@echo "  make clean         Remove cache and temporary files"
 
 install:
-	$(PYTHON) -m pip install -r requirements.txt
+ifdef UV
+	uv sync
+else
+	python3 -m pip install -r requirements.txt
+endif
 
 run-local:
-	$(PYTHON) run_local_cluster.py start
+ifdef UV
+	uv run python run_local_cluster.py start
+else
+	python3 run_local_cluster.py start
+endif
 
 stop-local:
-	$(PYTHON) run_local_cluster.py stop
+ifdef UV
+	uv run python run_local_cluster.py stop
+else
+	python3 run_local_cluster.py stop
+endif
 
 status-local:
-	$(PYTHON) run_local_cluster.py status
+ifdef UV
+	uv run python run_local_cluster.py status
+else
+	python3 run_local_cluster.py status
+endif
 
 test:
-	$(PYTHON) -m pytest -v tests/
+ifdef UV
+	uv run pytest -v tests/
+else
+	python3 -m pytest -v tests/
+endif
 
 docker-up:
 	docker compose up --build -d
@@ -37,4 +57,5 @@ docker-down:
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} +
 	find . -type f -name "*.pyc" -delete
+	rm -rf .pytest_cache
 	rm -f .cluster_pids.json
