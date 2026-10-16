@@ -8,6 +8,12 @@ __pycache__/
 # Virtual Environments
 venv/
 **/venv/
+.venv/
+**/.venv/
+
+# Testing & Cache
+.pytest_cache/
+.cluster_pids.json
 
 # Env files
 .env
@@ -21,5 +27,5 @@ venv/
 .vscode/
 .idea/
 
-# Docker
+# Docker & Logs
 *.log

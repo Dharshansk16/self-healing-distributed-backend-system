@@ -1,69 +1,69 @@
-# Project Progress: Self-Healing Distributed Systems
+# Project Progress: Autonomous Self-Healing Distributed System (MAPE-K)
 
-## Current status
+## Current Status: Phase 0 (Audit) & Phase 1 (Target Microservice Mesh) Completed
 
-The project now has a working microservices foundation for demonstrating and observing distributed failures. The business workflow is intentionally small, allowing the next phases—log analysis, root-cause analysis, agentic RAG, and remediation—to be developed against a realistic service interaction.
+The project has been refactored to align with the master specification in `BLUEPRINT.md`. All target microservices, shared telemetry middleware, naive liveness probes, deterministic chaos endpoints, local cluster runner, and Kubernetes/Docker configs are fully implemented and verified with automated tests.
 
-## Implemented
+---
 
-### Microservice architecture
+## Implemented Features
 
-- **Order service** accepts order requests and coordinates the end-to-end workflow.
-- **Inventory service** maintains in-memory stock and supports atomic stock reservations and releases.
-- **Payment service** provides a deterministic payment stub for successful and declined payment scenarios.
-- Docker Compose defines the three-service topology, exposed on ports `8000`–`8002`, with service health checks and dependency-aware startup.
+### 1. Phase 0: Codebase Audit & Gap Analysis
+- Audited legacy codebase across 5 pillars (Topology, Telemetry, Gray Failure Readiness, Chaos Hooks, Control Plane Compatibility).
+- Restructured repository layout into the standardized `target-cluster/` directory layout.
 
-### Distributed workflow and recovery behavior
+### 2. Phase 1: Target Microservice Mesh (`target-cluster/`)
+- **4-Tier Service Topology:**
+  - `api-gateway` (Port `8000`): Primary entry point (`POST /api/v1/checkout`). Calls `auth-service` and `order-service`.
+  - `auth-service` (Port `8001`): Token verification endpoint (`POST /verify` and `POST /api/v1/verify`).
+  - `order-service` (Port `8002`): Order creation and coordination endpoint (`POST /orders` and `POST /api/v1/orders`), delegating payment to `payment-service`.
+  - `payment-service` (Port `8003`): Downstream leaf payment charge endpoint (`POST /charge` and `POST /api/v1/charge`).
+- **Shared Telemetry & Chaos Middleware (`target-cluster/common/telemetry_and_chaos.py`):**
+  - `GET /health`: Naive liveness probe returning HTTP 200 in $< 5\text{ms}$ even under gray failures (simulates reactive orchestrator blindness).
+  - `GET /metrics`: Standard Prometheus metrics with $p50/p95/p99$ latency histograms, request counters, CPU and memory gauges.
+  - `GET /telemetry/snapshot`: JSON snapshot reporting `cpu_pct`, `mem_mb`, `rps`, `error_rate`, `latency_p50_ms`, `latency_p99_ms`, `active_faults`, and `recent_logs`.
+  - **Deterministic Chaos Injection:**
+    - `POST /debug/fault/latency`: Injects async sleep into business routes.
+    - `POST /debug/fault/memory-leak`: Background memory allocation task.
+    - `POST /debug/fault/cpu-burn`: Dedicated background worker burning CPU cycles without freezing asyncio.
+    - `POST /debug/fault/error-spike`: Raises realistic exceptions with 500 status code.
+    - `POST /debug/fault/reset`: Drains memory buffers, terminates fault workers, resets state, and logs `[REMEDIATION] Service state restored to healthy`.
+  - **Distributed Tracing & Request Context:** Propagates `X-Request-ID` across all hop layers.
+  - **Structured Log Ring Buffer:** In-memory circular buffer preserving the last 50 structured logs per service.
 
-1. The order service reserves inventory.
-2. It requests payment for the order.
-3. It confirms the order only after both operations succeed.
-4. If payment fails after inventory has been reserved, the order service releases the reservation as a compensating action.
+### 3. Orchestration & Local Tooling
+- `run_local_cluster.py`: Single-command local launcher that boots and validates all 4 microservices with health checks and clean shutdown.
+- `docker-compose.yml`: Multi-container stack including `api-gateway`, `auth-service`, `order-service`, `payment-service`, `prometheus`, and `jaeger`.
+- `target-cluster/k8s-manifests/`: Full Kubernetes YAML manifests for deployments, services, namespace, Prometheus ConfigMap, and Jaeger.
+- `Makefile`: Targets for `install`, `run-local`, `stop-local`, `status-local`, `test`, `docker-up`, `docker-down`.
 
-This flow provides a concrete failure-and-recovery scenario for the self-healing system to analyze later.
+### 4. Verification & Testing
+- 18 automated tests in `tests/`:
+  - `tests/test_microservices.py`: Unit and mock integration tests for all 4 microservices.
+  - `tests/test_telemetry_and_chaos.py`: Validation of gray-failure latency, memory leak, CPU burn, error spike, Prometheus metrics, and JSON telemetry snapshots.
+  - `tests/test_live_cascading.py`: End-to-end integration test demonstrating cascading latency from `payment-service` to `api-gateway` while `/health` probes remain fast (200 OK), followed by remediation recovery.
 
-### Observability and failure simulation
+---
 
-- Services emit structured JSON logs containing timestamp, service name, log level, message, and request ID.
-- `X-Request-ID` is propagated from the order service to its downstream calls, enabling one transaction to be traced across service logs.
-- The order service has configurable downstream timeouts and returns meaningful dependency failure responses.
-- Development-only failure simulation routes are available for crash, CPU spike, memory leak, latency, and random-error scenarios. They are disabled by default to prevent accidental disruption.
+## Next Implementation Priorities (MAPE-K Control Plane)
 
-### Documentation and verification
+1. **Phase 2: Monitor & Knowledge Base (`control-plane/monitor` & `control-plane/knowledge_base`)**
+   - Prometheus scraper (`prometheus_collector.py`) collecting the 6D telemetry vector.
+   - Jaeger topology collector (`jaeger_topology.py`) extracting the dynamic dependency graph $G=(V, E)$.
+   - SQLite Knowledge Base store (`store.py`) persisting telemetry history and incident logs.
 
-- The README documents the architecture, API surface, configuration, local startup process, and example success/failure requests.
-- API behavior has been validated for inventory reservation/release, payment approval/decline, and order compensation on payment failure.
-- Python source compilation and Docker Compose configuration have been validated.
+2. **Phase 3: Two-Stage Analyzer (`control-plane/analyzer`)**
+   - Stage 1: Isolation Forest + temporal slope derivatives for proactive anomaly scoring.
+   - Stage 2: Anomaly-Weighted Downstream PageRank RCA (`rca_engine.py`) to mathematically pinpoint root cause services.
 
-## Next implementation priorities
+3. **Phase 4: Planner, Log Agent & Actuator (`control-plane/planner` & `control-plane/executor`)**
+   - Policy Decision Matrix with anti-flapping cooldown lock.
+   - Log Diagnostic Agent (LLM / MCP with regex fallback).
+   - Dual-mode Actuator (Kubernetes SDK + local reset endpoint fallback).
 
-### 1. Centralized log collection and analysis
+4. **Phase 5: Chaos Benchmarking & Research Plots (`chaos-experiments/`)**
+   - Automated 3-way comparative benchmark (No Healing vs. Reactive K8s vs. Proposed MAPE-K).
+   - 300-DPI IEEE research figure generator.
 
-Collect service logs in a central store and build a component that detects error patterns, repeated failures, latency anomalies, and service unavailability.
-
-### 2. Root-cause analysis
-
-Correlate logs using the request ID and dependency flow to identify the originating service and likely cause of an incident rather than reporting only the visible failure.
-
-### 3. Agentic RAG remediation workflow
-
-Add a knowledge base of runbooks, historical incidents, and approved fixes. An agent should retrieve relevant guidance, propose a remediation plan, and require defined safety checks before action.
-
-### 4. Controlled remediation execution
-
-Implement safe, auditable remediation actions such as restarting an unhealthy service, scaling a service, or applying an approved configuration change. Actions should include rollback and verification steps.
-
-### 5. Production-oriented platform capabilities
-
-Replace in-memory service state with durable storage, introduce asynchronous messaging where appropriate, and add authentication, metrics, dashboards, and automated integration tests.
-
-## Project direction
-
-The implemented services are the observable system under management. The next milestone is to turn their logs and failure signals into an automated loop:
-
-```text
-Detect incident → analyze correlated evidence → identify probable cause
-→ retrieve approved fix → execute safely → verify recovery
-```
-
-This will evolve the current distributed workflow into a demonstrable self-healing system.
+5. **Phase 6: Live Streamlit Dashboard (`dashboard/app.py`)**
+   - Real-time topology graph, anomaly score line charts, and interactive chaos injection console.

@@ -1,112 +1,149 @@
-# Self-Healing Distributed Systems
+# Autonomous Self-Healing Distributed System (MAPE-K Architecture)
 
-This repository contains the microservice foundation for a self-healing distributed-systems project. The current implementation models an order workflow whose request flow, service failures, and compensating actions can be observed through structured logs. It is deliberately small and runnable so that log analysis, root-cause analysis, agentic RAG, and automated remediation can be layered on top without coupling those concerns to business services.
+A research-grade autonomous self-healing distributed system designed to detect and proactively remediate **gray failures**, **cascading latency spikes**, and **memory leaks** before container crashes occur.
 
-## Implemented architecture
+---
+
+## 1. Project Overview & Research Context
+
+Standard container orchestrators (such as Kubernetes) detect and heal hard crashes (e.g. process exits or failing liveness probes). However, they suffer from:
+1. **Gray Failures (Silent Degradation):** When a service suffers from high tail latency ($p99 > 3000\text{ms}$) or memory creep, its `/health` liveness probe continues returning `HTTP 200 OK`. Standard orchestrators take zero action while user requests time out.
+2. **Cascading Alerts & Root Cause Blindness:** When a downstream leaf service (`payment-service`) degrades, upstream callers (`order-service` and `api-gateway`) also experience high latency and errors. Rule-based auto-healers naively restart healthy upstream pods rather than isolating the true downstream root cause.
+3. **Static Threshold Inflexibility:** Reactive rules (`CPU > 80%`) trigger too late during memory creep or miss high-latency low-CPU gray failures.
+
+This project implements an autonomous out-of-cluster **MAPE-K (Monitor, Analyze, Plan, Execute + Knowledge Base)** Control Plane.
+
+---
+
+## 2. Phase 0 Audit Matrix (Readiness Assessment)
+
+| Readiness Pillar | Status | Findings & Implementation |
+| :--- | :---: | :--- |
+| **1. Topology** | ✅ **Ready** | 4-tier microservice call chain: `api-gateway` (8000) $\rightarrow$ `auth-service` (8001) & `order-service` (8002) $\rightarrow$ `payment-service` (8003). |
+| **2. Telemetry** | ✅ **Ready** | Every microservice exposes Prometheus metrics (`/metrics`) with $p50/p95/p99$ latency histograms, plus real-time JSON snapshots (`/telemetry/snapshot`). |
+| **3. Gray Failure Readiness** | ✅ **Ready** | `GET /health` acts as a naive liveness probe returning `200 OK` in $< 5\text{ms}$ even under severe latency or memory faults, enabling direct comparison between reactive orchestrators and MAPE-K. |
+| **4. Deterministic Chaos Hooks** | ✅ **Ready** | Unified endpoints (`/debug/fault/*`) across all services for async latency, memory leak, CPU burn, error spikes, and instant remediation reset. |
+| **5. Control Plane Compatibility** | ✅ **Ready** | Standardized `/telemetry/snapshot` and `/debug/fault/reset` actuator endpoints ready for consumption by Prometheus, Jaeger, and the MAPE-K loop. |
+
+---
+
+## 3. Architecture & Topology (`target-cluster/`)
 
 ```text
-Client
-  |
-  v
-order-service :8000
-  | reserves stock                         | charges payment
-  v                                        v
-inventory-service :8001               payment-service :8002
+[ Client / Locust Load ]
+          |
+          v
+[ API Gateway :8000 ]  ---> [ Auth Service :8001 ]
+          |
+          v
+[ Order Service :8002 ] ---> [ Payment Service :8003 ] (Downstream Leaf)
+          |                            |
+          +--------------+-------------+
+                         | (Metrics, Logs, Snapshots)
+                         v
+     [ MAPE-K Control Plane / Prometheus / Jaeger ]
 ```
 
-`order-service` orchestrates a synchronous three-step workflow:
+### Microservice Directory Layout
 
-1. Reserve the requested quantity in `inventory-service`.
-2. Charge the request through `payment-service`.
-3. Return a confirmed order only after both operations succeed.
+```text
+self-healing-distributed-system/
+├── README.md                           # Master specification and documentation
+├── requirements.txt                    # Consolidated Python dependencies
+├── docker-compose.yml                  # Services + Prometheus + Jaeger stack
+├── Makefile                            # Build, test, and execution targets
+├── run_local_cluster.py                # Single-command local launcher
+│
+├── target-cluster/                     # PLANE 1: Target Microservice Mesh
+│   ├── common/
+│   │   └── telemetry_and_chaos.py      # Shared middleware for Prometheus, telemetry snapshots, and chaos hooks
+│   ├── services/
+│   │   ├── api-gateway/                # Port 8000: Calls auth-service & order-service
+│   │   ├── auth-service/               # Port 8001: Token verification
+│   │   ├── order-service/              # Port 8002: Coordinates orders, calls payment-service
+│   │   └── payment-service/            # Port 8003: Downstream leaf payment processor
+│   └── k8s-manifests/                  # Kubernetes YAML manifests (namespace, microservices, prometheus, jaeger)
+│
+└── tests/                              # Automated test suite
+    ├── conftest.py
+    ├── test_microservices.py           # Unit and mock integration tests
+    ├── test_telemetry_and_chaos.py     # Gray failure and chaos endpoint tests
+    └── test_live_cascading.py          # End-to-end live network cascading latency test
+```
 
-If payment is declined or unreachable after stock has been reserved, the order service calls the inventory release endpoint. This is a small, explicit compensating-transaction (saga) flow that produces useful failure signals for the later self-healing pipeline.
+---
 
-## Services
+## 4. API Reference
 
-| Service | Port | Responsibility |
-| --- | --- | --- |
-| Order service | 8000 | Validates orders, coordinates inventory and payment, and compensates failed payment flows. |
-| Inventory service | 8001 | Exposes stock levels and creates/releases inventory reservations. Seed stock: product `1` = 100, `2` = 50, `3` = 0. |
-| Payment service | 8002 | Provides a deterministic payment stub. Any token except `decline` is captured; `decline` returns a payment failure. |
+### Business Endpoints
 
-All APIs are versioned under `/api/v1`. Every service provides `GET /api/v1/health` for orchestration health checks.
+| Service | Method & Path | Description |
+| :--- | :--- | :--- |
+| **API Gateway** | `POST /api/v1/checkout` | Authenticates with Auth Service and creates order via Order Service |
+| **Auth Service** | `POST /verify` | Validates session/bearer auth token (returns 401 if invalid) |
+| **Order Service** | `POST /orders` | Places order and charges payment via Payment Service |
+| **Payment Service** | `POST /charge` | Processes payment charge (returns 402 if declined) |
 
-## API reference
+### Observability & Deterministic Chaos Endpoints (Available on ALL Services)
 
-| Service | Method and path | Purpose |
-| --- | --- | --- |
-| Order | `POST /orders` | Reserve stock, capture payment, and create a confirmed order. |
-| Order | `GET /health` | Service liveness endpoint. |
-| Inventory | `GET /inventory/{product_id}` | Return currently available stock for a product. |
-| Inventory | `POST /inventory/reservations` | Atomically reserve stock; returns `409` when unavailable. |
-| Inventory | `DELETE /inventory/reservations/{reservation_id}` | Release a prior reservation. |
-| Payment | `POST /payments` | Capture a deterministic mock payment. |
-| Payment | `GET /health` | Service liveness endpoint. |
+| Endpoint | Method | Payload / Description |
+| :--- | :--- | :--- |
+| `/health` | `GET` | Naive liveness probe; returns `HTTP 200 OK` in $< 5\text{ms}$ even under gray failure |
+| `/metrics` | `GET` | Prometheus scrape metrics (Counters, Gauges, Histograms) |
+| `/telemetry/snapshot` | `GET` | JSON snapshot (`cpu_pct`, `mem_mb`, `rps`, `error_rate`, `latency_p50_ms`, `latency_p99_ms`, `active_faults`, `recent_logs`) |
+| `/debug/fault/latency` | `POST` | `{"delay_ms": 1200, "jitter_ms": 150, "enabled": true}` |
+| `/debug/fault/memory-leak` | `POST` | `{"rate_mb_per_sec": 4.0, "enabled": true}` |
+| `/debug/fault/cpu-burn` | `POST` | `{"utilization_target": 0.85, "enabled": true}` |
+| `/debug/fault/error-spike` | `POST` | `{"failure_rate": 0.60, "http_code": 500, "exception_type": "DatabaseConnectionPoolExhaustedError", "enabled": true}` |
+| `/debug/fault/reset` | `POST` | Restores service to healthy state, drains memory buffers, cancels fault tasks |
+| `/debug/fault/status` | `GET` | Returns active fault configurations |
 
-Prefix every path in the table with `/api/v1`. The order failure-simulation paths are intentionally omitted because they are disabled unless explicitly enabled for isolated development.
+---
 
-## Observability and resilience hooks
+## 5. Quick Start & Execution
 
-- Services emit JSON logs with timestamp, level, service, logger, message, and `request_id` fields.
-- A caller-supplied `X-Request-ID` is propagated from the order service to downstream calls and returned in the response. This makes one distributed transaction traceable across service logs.
-- The order service applies a configurable downstream timeout (`REQUEST_TIMEOUT_SECONDS`, default `3`). It reports unavailable dependencies as `503` and unexpected downstream rejections as `502`.
-- Failure simulation endpoints remain available in order service but are disabled by default. Set `FAILURE_SIMULATION_ENABLED=true` only in an isolated development environment before using `/api/v1/simulate/*`.
+### Option A: Local Run (No Docker or Kubernetes required)
 
-The service state is intentionally in memory and the payment implementation is a stub. Persistence, asynchronous messaging, authentication, and the log-analysis/RAG/remediation components are not yet implemented.
+Start all 4 microservices locally:
+```bash
+python3 run_local_cluster.py start
+```
+Check health and status:
+```bash
+python3 run_local_cluster.py status
+```
+Test checkout request:
+```bash
+curl -i -X POST http://localhost:8000/api/v1/checkout \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "alice", "auth_token": "valid_token", "product_id": "prod_1", "quantity": 2, "amount": 99.99}'
+```
+Stop the local cluster:
+```bash
+python3 run_local_cluster.py stop
+```
 
-## Run locally with Docker Compose
+### Option B: Docker Compose
 
 ```bash
-docker compose up --build
+docker compose up --build -d
 ```
+- API Gateway: `http://localhost:8000`
+- Prometheus UI: `http://localhost:9090`
+- Jaeger Tracing UI: `http://localhost:16686`
 
-The services become available at `http://localhost:8000`, `http://localhost:8001`, and `http://localhost:8002`. Compose waits for inventory and payment health checks before starting the order service.
-
-Stop the stack with:
-
+Stop the containers:
 ```bash
 docker compose down
 ```
 
-## Exercise the order flow
+---
 
-Create a successful order:
+## 6. Running Automated Tests
 
+Run the full pytest suite (18 unit, gray-failure, and live cascading tests):
 ```bash
-curl -i -X POST http://localhost:8000/api/v1/orders \
-  -H 'Content-Type: application/json' \
-  -H 'X-Request-ID: demo-order-001' \
-  -d '{"product_id": 1, "quantity": 2, "amount": 49.99, "payment_token": "approved"}'
+pytest -v tests/
+# or
+make test
 ```
-
-The response is `201 Created` with the generated `order_id`, `reservation_id`, and `payment_id`. Inspect the logs for `demo-order-001` to follow the same transaction through all three services.
-
-Exercise payment failure and inventory compensation:
-
-```bash
-curl -i -X POST http://localhost:8000/api/v1/orders \
-  -H 'Content-Type: application/json' \
-  -d '{"product_id": 1, "quantity": 2, "amount": 49.99, "payment_token": "decline"}'
-```
-
-This returns `402 Payment Required`; the prior inventory reservation is released. Requesting more stock than is available returns `409 Conflict`.
-
-Check inventory directly:
-
-```bash
-curl http://localhost:8001/api/v1/inventory/1
-```
-
-## Configuration
-
-Order service configuration can be set through environment variables. The local `services/order-service/.env` targets ports on the host; Compose overrides those URLs with service DNS names.
-
-For a local non-container run, create `services/order-service/.env` from [`services/order-service/.env.example`](services/order-service/.env.example).
-
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `INVENTORY_SERVICE_URL` | `http://localhost:8001` | Inventory base URL. |
-| `PAYMENT_SERVICE_URL` | `http://localhost:8002` | Payment base URL. |
-| `REQUEST_TIMEOUT_SECONDS` | `3.0` | Timeout for each downstream HTTP request. |
-| `FAILURE_SIMULATION_ENABLED` | `false` | Enables destructive development-only simulation routes. |
