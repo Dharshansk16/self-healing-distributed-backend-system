@@ -49,7 +49,8 @@ This project implements an autonomous out-of-cluster **MAPE-K (Monitor, Analyze,
 ```text
 self-healing-distributed-system/
 ├── README.md                           # Master specification and documentation
-├── requirements.txt                    # Consolidated Python dependencies
+├── pyproject.toml                      # Project metadata and dependencies (uv)
+├── uv.lock                             # Pinned reproducible dependency lockfile
 ├── docker-compose.yml                  # Services + Prometheus + Jaeger stack
 ├── Makefile                            # Build, test, and execution targets
 ├── run_local_cluster.py                # Single-command local launcher
@@ -113,8 +114,8 @@ Install dependencies:
 # Using uv (recommended, fast & reproducible)
 uv sync
 
-# Or using standard pip
-pip install -r requirements.txt
+# Or using Makefile
+make install
 ```
 
 Start all 4 microservices locally:

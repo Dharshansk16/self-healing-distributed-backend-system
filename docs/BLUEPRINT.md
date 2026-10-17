@@ -99,7 +99,8 @@ The coding agent must organize or adapt the repository into this exact structure
 ```text
 self-healing-distributed-system/
 ├── README.md                           # This master specification
-├── requirements.txt                    # Consolidated Python dependencies
+├── pyproject.toml                      # Project metadata and dependencies (uv)
+├── uv.lock                             # Pinned reproducible dependency lockfile
 ├── docker-compose.yml                  # Local multi-container stack (Services + Prometheus + Jaeger)
 ├── Makefile                            # One-command build, run, test, and benchmark targets
 ├── run_local_cluster.py                # Single-command local launcher (runs full mesh without K8s issues)

@@ -4,7 +4,7 @@ UV := $(shell which uv 2>/dev/null)
 
 help:
 	@echo "Available Makefile commands:"
-	@echo "  make install       Install dependencies (via uv sync, with pip fallback)"
+	@echo "  make install       Install dependencies (via uv sync)"
 	@echo "  make run-local     Start 4 microservices locally in background (via uv run)"
 	@echo "  make stop-local    Stop all locally running microservices"
 	@echo "  make status-local  Check health of local microservices"
@@ -14,11 +14,7 @@ help:
 	@echo "  make clean         Remove cache and temporary files"
 
 install:
-ifdef UV
 	uv sync
-else
-	python3 -m pip install -r requirements.txt
-endif
 
 run-local:
 ifdef UV
