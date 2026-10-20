@@ -8,6 +8,7 @@ Part of the Autonomous Self-Healing Microservices Mesh.
 import logging
 import os
 import sys
+from typing import Optional
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Request
@@ -49,6 +50,7 @@ class CheckoutResponse(BaseModel):
     user_id: str
     order_id: str
     payment_id: str
+    reservation_id: Optional[str] = None
     amount: float
     message: str
 
@@ -146,9 +148,10 @@ async def checkout(req: CheckoutRequest, request: Request) -> CheckoutResponse:
     order_data = order_resp.json()
     order_id = order_data.get("order_id", "unknown")
     payment_id = order_data.get("payment_id", "unknown")
+    reservation_id = order_data.get("reservation_id")
 
     logger.info(
-        f"Checkout {checkout_id} completed successfully (Order: {order_id}, Payment: {payment_id})",
+        f"Checkout {checkout_id} completed successfully (Order: {order_id}, Payment: {payment_id}, Reservation: {reservation_id})",
         extra={"request_id": request_id},
     )
 
@@ -158,6 +161,7 @@ async def checkout(req: CheckoutRequest, request: Request) -> CheckoutResponse:
         user_id=req.user_id,
         order_id=order_id,
         payment_id=payment_id,
+        reservation_id=reservation_id,
         amount=req.amount,
         message="Checkout succeeded and order confirmed",
     )

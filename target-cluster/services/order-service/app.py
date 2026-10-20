@@ -1,6 +1,8 @@
 """
 Order Service (Port 8002)
-Mid-tier microservice that coordinates order creation and delegates payment to Payment Service.
+Mid-tier microservice that coordinates order creation across downstream dependencies:
+- Branch A: Payment Service (charges payment)
+- Branch B: Inventory Service (reserves stock)
 Part of the Autonomous Self-Healing Microservices Mesh.
 """
 
@@ -21,12 +23,13 @@ from common.telemetry_and_chaos import setup_telemetry_and_chaos
 SERVICE_NAME = "order-service"
 PORT = int(os.getenv("PORT", "8002"))
 PAYMENT_SERVICE_URL = os.getenv("PAYMENT_SERVICE_URL", "http://localhost:8003").rstrip("/")
+INVENTORY_SERVICE_URL = os.getenv("INVENTORY_SERVICE_URL", "http://localhost:8004").rstrip("/")
 DOWNSTREAM_TIMEOUT_SEC = float(os.getenv("DOWNSTREAM_TIMEOUT_SEC", "5.0"))
 
 app = FastAPI(
     title=SERVICE_NAME,
-    description="Coordinates order fulfillment and downstream payment operations",
-    version="1.0.0",
+    description="Coordinates order fulfillment and downstream payment & inventory operations",
+    version="1.1.0",
 )
 
 logger = logging.getLogger(SERVICE_NAME)
@@ -49,6 +52,7 @@ class OrderResponse(BaseModel):
     quantity: int
     amount: float
     payment_id: str
+    reservation_id: Optional[str] = None
     message: str
 
 
@@ -58,19 +62,69 @@ async def create_order(req: OrderRequest, request: Request) -> OrderResponse:
     request_id = getattr(request.state, "request_id", "unknown")
     order_id = f"ord-{uuid4().hex[:12]}"
     user_id = req.user_id or "user_default"
+    headers = {"X-Request-ID": request_id}
 
     logger.info(
         f"Processing order {order_id} for user {user_id}: {req.quantity}x {req.product_id} = ${req.amount:.2f}",
         extra={"request_id": request_id},
     )
 
-    # Forward to payment-service
+    # 1. Branch B: Reserve stock in Inventory Service
+    reserve_payload = {
+        "product_id": req.product_id,
+        "quantity": req.quantity,
+        "order_id": order_id,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=DOWNSTREAM_TIMEOUT_SEC) as client:
+            reserve_resp = await client.post(
+                f"{INVENTORY_SERVICE_URL}/reserve",
+                json=reserve_payload,
+                headers=headers,
+            )
+    except httpx.TimeoutException as exc:
+        logger.error(f"Inventory service timed out for order {order_id}: {exc}", extra={"request_id": request_id})
+        raise HTTPException(
+            status_code=504,
+            detail={"status": "gateway_timeout", "service": "inventory-service", "message": "Inventory service timed out"},
+        )
+    except httpx.RequestError as exc:
+        logger.error(f"Inventory service connection failed for order {order_id}: {exc}", extra={"request_id": request_id})
+        raise HTTPException(
+            status_code=503,
+            detail={"status": "unavailable", "service": "inventory-service", "message": "Inventory service is unreachable"},
+        )
+
+    if reserve_resp.status_code == 409:
+        logger.warning(f"Stock reservation failed for order {order_id}: out of stock", extra={"request_id": request_id})
+        raise HTTPException(
+            status_code=409,
+            detail={"status": "out_of_stock", "message": f"Product '{req.product_id}' is currently out of stock"},
+        )
+
+    if reserve_resp.is_error:
+        logger.error(
+            f"Inventory service error {reserve_resp.status_code} for order {order_id}",
+            extra={"request_id": request_id},
+        )
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "status": "bad_gateway",
+                "service": "inventory-service",
+                "message": f"Inventory service returned error code {reserve_resp.status_code}",
+            },
+        )
+
+    reserve_data = reserve_resp.json()
+    reservation_id = reserve_data.get("reservation_id", f"res-{uuid4().hex[:10]}")
+
+    # 2. Branch A: Process charge with Payment Service
     charge_payload = {
         "order_id": order_id,
         "amount": req.amount,
         "payment_token": req.payment_token,
     }
-    headers = {"X-Request-ID": request_id}
 
     try:
         async with httpx.AsyncClient(timeout=DOWNSTREAM_TIMEOUT_SEC) as client:
@@ -117,7 +171,7 @@ async def create_order(req: OrderRequest, request: Request) -> OrderResponse:
     payment_id = payment_data.get("payment_id", f"pay-{uuid4().hex[:10]}")
 
     logger.info(
-        f"Order {order_id} confirmed successfully with payment {payment_id}",
+        f"Order {order_id} confirmed successfully (Payment: {payment_id}, Reservation: {reservation_id})",
         extra={"request_id": request_id},
     )
 
@@ -129,7 +183,8 @@ async def create_order(req: OrderRequest, request: Request) -> OrderResponse:
         quantity=req.quantity,
         amount=req.amount,
         payment_id=payment_id,
-        message="Order created and paid successfully",
+        reservation_id=reservation_id,
+        message="Order created, inventory reserved, and payment captured successfully",
     )
 
 
@@ -140,6 +195,7 @@ def root():
         "status": "operational",
         "port": PORT,
         "downstream_payment_url": PAYMENT_SERVICE_URL,
+        "downstream_inventory_url": INVENTORY_SERVICE_URL,
         "endpoints": ["/orders", "/api/v1/orders", "/health", "/metrics", "/telemetry/snapshot"],
     }
 

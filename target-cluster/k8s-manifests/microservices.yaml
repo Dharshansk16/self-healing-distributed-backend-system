@@ -143,6 +143,8 @@ spec:
               value: "8002"
             - name: PAYMENT_SERVICE_URL
               value: "http://payment-service:8003"
+            - name: INVENTORY_SERVICE_URL
+              value: "http://inventory-service:8004"
           livenessProbe:
             httpGet:
               path: /health
@@ -231,3 +233,61 @@ spec:
   ports:
     - port: 8000
       targetPort: 8000
+
+---
+# ==============================================================================
+# INVENTORY SERVICE
+# ==============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inventory-service
+  namespace: self-healing-system
+  labels:
+    app: inventory-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: inventory-service
+  template:
+    metadata:
+      labels:
+        app: inventory-service
+    spec:
+      containers:
+        - name: inventory-service
+          image: inventory-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8004
+          env:
+            - name: PORT
+              value: "8004"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8004
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: inventory-service
+  namespace: self-healing-system
+spec:
+  selector:
+    app: inventory-service
+  ports:
+    - port: 8004
+      targetPort: 8004
+

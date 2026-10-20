@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """
 Single-Command Local Cluster Launcher for Autonomous Self-Healing System.
-Spawns all 4 microservices as local background processes:
-- API Gateway:    http://localhost:8000
-- Auth Service:   http://localhost:8001
-- Order Service:  http://localhost:8002
-- Payment Service: http://localhost:8003
+Spawns all 5 microservices as local background processes:
+- API Gateway:       http://localhost:8000
+- Auth Service:      http://localhost:8001
+- Order Service:     http://localhost:8002
+- Payment Service:   http://localhost:8003
+- Inventory Service: http://localhost:8004
 
 Usage:
   python run_local_cluster.py start      # Starts cluster in background and validates health
-  python run_local_cluster.py status     # Checks health status of all 4 microservices
+  python run_local_cluster.py status     # Checks health status of all 5 microservices
   python run_local_cluster.py stop       # Stops all running microservices
   python run_local_cluster.py run        # Runs in foreground with graceful Ctrl+C shutdown
 """
@@ -35,6 +36,12 @@ SERVICES = [
         "env": {"PORT": "8001"},
     },
     {
+        "name": "inventory-service",
+        "port": 8004,
+        "path": os.path.join(BASE_DIR, "target-cluster", "services", "inventory-service", "app.py"),
+        "env": {"PORT": "8004"},
+    },
+    {
         "name": "payment-service",
         "port": 8003,
         "path": os.path.join(BASE_DIR, "target-cluster", "services", "payment-service", "app.py"),
@@ -44,7 +51,11 @@ SERVICES = [
         "name": "order-service",
         "port": 8002,
         "path": os.path.join(BASE_DIR, "target-cluster", "services", "order-service", "app.py"),
-        "env": {"PORT": "8002", "PAYMENT_SERVICE_URL": "http://localhost:8003"},
+        "env": {
+            "PORT": "8002",
+            "PAYMENT_SERVICE_URL": "http://localhost:8003",
+            "INVENTORY_SERVICE_URL": "http://localhost:8004",
+        },
     },
     {
         "name": "api-gateway",
@@ -122,12 +133,13 @@ def cmd_start(foreground: bool = False):
         time.sleep(0.5)
 
     if all_ready:
-        print("\n✅ All 4 microservices are healthy and running!")
+        print("\n✅ All 5 microservices are healthy and running!")
         print("-" * 60)
-        print("  • API Gateway:     http://localhost:8000/api/v1/checkout")
-        print("  • Auth Service:    http://localhost:8001/health")
-        print("  • Order Service:   http://localhost:8002/health")
-        print("  • Payment Service: http://localhost:8003/health")
+        print("  • API Gateway:       http://localhost:8000/api/v1/checkout")
+        print("  • Auth Service:      http://localhost:8001/health")
+        print("  • Order Service:     http://localhost:8002/health")
+        print("  • Payment Service:   http://localhost:8003/health")
+        print("  • Inventory Service: http://localhost:8004/health")
         print("-" * 60)
     else:
         print("\n⚠️ Warning: Some services did not respond in time:")
