@@ -74,14 +74,16 @@ flowchart TD
     Prom ==>|PromQL Metric Stream| M1
     E1 ==>|Kubernetes / In-Process Actuation| ManagedCluster
 
-    classDef mesh fill:#e7f5ff,stroke:#1971c2,stroke-width:2px;
-    classDef leaf fill:#e3fafc,stroke:#0c8599,stroke-width:2px;
-    classDef prom fill:#ffe3e3,stroke:#e03131,stroke-width:2px;
-    classDef monitor fill:#f3f0ff,stroke:#7950f2,stroke-width:2px;
-    classDef analyze fill:#fff4e6,stroke:#fd7e14,stroke-width:2px;
-    classDef plan fill:#fff9db,stroke:#fab005,stroke-width:2px;
-    classDef execute fill:#ebfbee,stroke:#40c057,stroke-width:2px;
-    classDef kb fill:#f1f3f5,stroke:#495057,stroke-width:2px;
+    classDef mesh fill:#e7f5ff,stroke:#1971c2,stroke-width:2px,color:#0f172a;
+    classDef leaf fill:#e3fafc,stroke:#0c8599,stroke-width:2px,color:#0f172a;
+    classDef prom fill:#ffe3e3,stroke:#e03131,stroke-width:2px,color:#0f172a;
+    classDef monitor fill:#f3f0ff,stroke:#7950f2,stroke-width:2px,color:#0f172a;
+    classDef analyze fill:#fff4e6,stroke:#fd7e14,stroke-width:2px,color:#0f172a;
+    classDef plan fill:#fff9db,stroke:#fab005,stroke-width:2px,color:#0f172a;
+    classDef execute fill:#ebfbee,stroke:#40c057,stroke-width:2px,color:#0f172a;
+    classDef kb fill:#f1f3f5,stroke:#495057,stroke-width:2px,color:#0f172a;
+    classDef client fill:#ffffff,stroke:#374151,stroke-width:2px,color:#0f172a;
+    classDef sidecar fill:#fff0f6,stroke:#d6336c,stroke-width:2px,color:#0f172a;
 
     class GW,Auth,Order mesh;
     class Payment,Inventory leaf;
@@ -91,6 +93,8 @@ flowchart TD
     class P1 plan;
     class E1 execute;
     class K1 kb;
+    class Client client;
+    class Sidecar sidecar;
 ```
 
 ---
